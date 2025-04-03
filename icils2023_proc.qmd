@@ -34,7 +34,7 @@ print(archivos_bsg)
 # Cargar todos los archivos encontrados
 for (archivo in archivos_bsg) {
   load(archivo)
-  cat("Cargado:", archivo, "\n")
+  # cat("Cargado:", archivo, "\n")
 }
 
 ```
@@ -42,9 +42,6 @@ for (archivo in archivos_bsg) {
 #### Unimos todos los dataframes de estudiantes
 
 ```{r}
-
-# Primero, asegúrate de tener dplyr
-library(dplyr)
 
 # Lista todos los objetos que son data frames en tu entorno
 todos_los_objetos <- ls()

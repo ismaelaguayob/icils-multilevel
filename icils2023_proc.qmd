@@ -1,0 +1,174 @@
+---
+title: "ICILS2023_proc"
+format: html
+editor: visual
+---
+
+# Procesamiento para ICILS 2023
+
+El presente documento tiene como objetivo realizar los procesamientos necesarios para unir las bases de datos de estudiantes de todos los países del 2023.
+
+#### Cargamos paquetes
+
+```{r}
+library(pacman)
+p_load(dplyr)
+options(scipen = 999) 
+rm(list = ls())      
+```
+
+#### Cargamos las bases de datos
+
+```{r}
+
+# Obtener la lista de archivos que comienzan con "BSG" y terminan con ".Rdata"
+archivos_bsg <- list.files(
+  path = "./ICILS2023_IDB_R/Data", # Directorio actual (cambia si es necesario)
+  pattern = "^BSG.*\\.Rdata$",
+  full.names = TRUE
+)
+
+# Ver qué archivos encontramos
+print(archivos_bsg)
+
+# Cargar todos los archivos encontrados
+for (archivo in archivos_bsg) {
+  load(archivo)
+  cat("Cargado:", archivo, "\n")
+}
+
+```
+
+#### Unimos todos los dataframes de estudiantes
+
+```{r}
+
+# Primero, asegúrate de tener dplyr
+library(dplyr)
+
+# Lista todos los objetos que son data frames en tu entorno
+todos_los_objetos <- ls()
+dataframes_bsg <- list()
+
+# Filtra solo los data frames que comienzan con BSG
+for (nombre_objeto in todos_los_objetos) {
+  objeto <- get(nombre_objeto)
+  # Verifica si es un data frame y si el nombre comienza con BSG
+  if (is.data.frame(objeto) && grepl("^BSG", nombre_objeto)) {
+    dataframes_bsg[[nombre_objeto]] <- objeto
+  }
+}
+
+# Ahora combina todos los data frames usando bind_rows
+datos_combinados <- bind_rows(dataframes_bsg)
+
+library(haven)
+
+# Procesar datos iniciales
+datos_combinados$CNTRY <- haven::zap_labels(datos_combinados$CNTRY)
+
+datos_combinados <- datos_combinados %>%
+  mutate(CNTRY = ifelse(CNTRY == "BFL", "BEL", CNTRY))
+
+datos_combinados <- datos_combinados %>%
+  mutate(CNTRY = ifelse(CNTRY == "DNW", "DEU", CNTRY))
+
+# Ver el resultado
+dim(datos_combinados)  # Dimensiones del data frame combinado
+```
+
+#### Ahora seleccionamos las columnas para usar en la dashboard
+
+```{r}
+
+datos_dashboard_icils <- datos_combinados %>% 
+  select(S_SEX, S_AGE, S_HOMLIT, CNTRY, NISB, IISB, starts_with("PV"), S_IMMBGR, starts_with("iS3"))
+
+datos_mapa1 <- datos_dashboard_icils %>% 
+  select(CNT = CNTRY, CIL = PV1CIL)
+
+datos_biv <- datos_dashboard_icils %>% 
+  select(sex = S_SEX, age = S_AGE, home_literacy = S_HOMLIT, CNT=CNTRY, i_SEB = IISB, n_SEB = NISB, mig = S_IMMBGR, CIL = PV1CIL)
+
+```
+
+#### Descargamos y unimos el índice de desarrollo TIC
+
+```{r}
+
+# Procesar datos iniciales
+datos_mapa1$CNT <- haven::zap_labels(datos_mapa1$CNT)
+country_codes <- unique(datos_mapa1$CNT)
+
+# Cargar y filtrar IDI
+IDI <- readxl::read_excel("./index/IDI.xlsx")
+idi_filtered <- IDI %>% 
+  mutate(Iso3 = as.character(Iso3)) %>%
+  select(IDI = `ICT Development Index (IDI)`, CNT = Iso3, label = Economy) %>% 
+  slice(-1)
+
+# Calcular la media de CIL por país
+datos_pais_mean <- datos_mapa1 %>%
+  group_by(CNT) %>%
+  summarize(CIL_country_mean = mean(CIL, na.rm = TRUE))
+
+# Unir con IDI y crear datos_mapa
+datos_mapa <- datos_pais_mean %>%
+  full_join(idi_filtered, by = "CNT") %>%
+  select(CIL = CIL_country_mean, CNT, IDI, label)
+
+datos_mapa <- datos_mapa %>%
+  mutate(label = ifelse(CNT == "TWN", "Taiwan", label))
+
+datos_mapa <- datos_mapa %>%
+  mutate(label = ifelse(CNT == "XKX", "Republic of Kosovo", label))
+```
+
+### Obtenemos labels para el CIL:
+
+```{r}
+
+IDI_p <- idi_filtered %>% 
+  select(CNT, label)
+
+datos_biv <- datos_biv %>% 
+  left_join(idi_filtered)
+
+datos_biv <- datos_biv %>%
+  mutate(label = ifelse(CNT == "TWN", "Taiwan", label))
+
+datos_biv <- datos_biv %>%
+  mutate(label = ifelse(CNT == "XKX", "Republic of Kosovo", label))
+
+datos_biv <- datos_biv %>% 
+  na.omit()
+
+print(unique(datos_biv$CNT))
+```
+
+```{r}
+
+datos_test <- datos_biv %>% 
+  filter(CNT=="CHL")
+
+print(mean(datos_test$CIL, na.rm = FALSE))
+```
+
+#### Descriptivos básicos
+
+```{r}
+
+library(table1)
+
+tabla_1 <- table1::table1(~ CIL_country_mean + IDI | CNT, data=dashboard_data, topclass="Rtable1-zebra", caption = "Tabla 1: Estadísticos Descriptivos índice")
+
+tabla_1
+```
+
+```{r}
+
+library(arrow)
+
+write_parquet(datos_mapa, "./output/datos_mapa.parquet")
+write_parquet(datos_biv, "./output/datos_biv.parquet")
+```

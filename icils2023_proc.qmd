@@ -8,19 +8,36 @@ editor: visual
 
 El presente documento tiene como objetivo realizar los procesamientos necesarios para unir las bases de datos de estudiantes de todos los países del 2023.
 
+## Algunas consideraciones sobre la base de datos
+
+#### Sobre el muestreo y consideraciones metodológicas
+
+ICILS no usa un muestreo aleatorio simple. Selecciona escuelas y luego estudiantes dentro de ellas, a menudo de forma estratificada y con probabilidades desiguales (ej. sobremuestreando ciertos tipos de escuelas o regiones). Si simplemente calculamos un promedio (ej. de CIL) sin usar los pesos, los estudiantes que fueron "más fáciles" de muestrear o que tuvieron mayor tasa de participación estarán sobrerrepresentados, y nuestro resultado **no representaría fielmente** a la población total de estudiantes del país.
+
+Para contrarrestar esto, ICILS tiene la variable `TOTWGTS` (Peso total), Al usarlo, cada estudiante en la muestra "equivale" por el número correcto de estudiantes en la población real. Se tiene que usar esta variable para cualquier cálculo de estadística descriptiva que queramos hacer.
+
+#### Sobre la inferencia estadística y las pruebas de significancia
+
+El diseño muestral de ICILS (selección de escuelas) hace que los estudiantes dentro de una misma escuela se parezcan más entre sí que estudiantes de escuelas diferentes (no son observaciones independientes). Las fórmulas estándar para calcular errores estándar (y por tanto, los p-values) que asumen independencia, **subestimarán la verdadera variabilidad muestral**. Esto significa que **encontraremos resultados "estadísticamente significativos" mucho más fácilmente de lo que deberíamos**, concluyendo que existen relaciones o diferencias que en realidad podrían deberse al azar o al diseño muestral.
+
+Al igual que con el peso total para la validez del muestreo en la representación, existen las varibales `JKZONES` y `JKREPS`, para no invalidar las pruebas de significancia. No se usan para "calcular promedios", sino que para calcular la precisión de esos promedios. {Aquí se hace algo que se llama JRR (Varianza Jackknife) que aún no entiendo lo que es, pero son como 75 columnas por estudiante}
+
+## Configuraciones generales
+
 #### Cargamos paquetes
 
 ```{r}
 library(pacman)
-p_load(dplyr)
+p_load(dplyr, haven)
 options(scipen = 999) 
 rm(list = ls())      
 ```
 
-#### Cargamos las bases de datos
+## Base de Estudiantes (BSG) - Nivel 1
+
+#### Cargamos y unimos las bases de datos directamente
 
 ```{r}
-
 # Obtener la lista de archivos que comienzan con "BSG" y terminan con ".Rdata"
 archivos_bsg <- list.files(
   path = "./ICILS2023_IDB_R/Data", # Directorio actual (cambia si es necesario)
@@ -31,41 +48,108 @@ archivos_bsg <- list.files(
 # Ver qué archivos encontramos
 print(archivos_bsg)
 
-# Cargar todos los archivos encontrados
+# Inicializar una lista vacía para almacenar temporalmente los dataframes
+temp_dataframes <- list()
+
+# Cargar cada archivo y añadirlo a la lista
 for (archivo in archivos_bsg) {
-  load(archivo)
-  # cat("Cargado:", archivo, "\n")
-}
-
-```
-
-#### Unimos todos los dataframes de estudiantes
-
-```{r}
-
-# Lista todos los objetos que son data frames en tu entorno
-todos_los_objetos <- ls()
-dataframes_bsg <- list()
-
-# Filtra solo los data frames que comienzan con BSG
-for (nombre_objeto in todos_los_objetos) {
-  objeto <- get(nombre_objeto)
-  # Verifica si es un data frame y si el nombre comienza con BSG
-  if (is.data.frame(objeto) && grepl("^BSG", nombre_objeto)) {
-    dataframes_bsg[[nombre_objeto]] <- objeto
+  # Crea un entorno temporal para cargar el archivo
+  temp_env <- new.env()
+  # Carga el archivo en el entorno temporal
+  load(archivo, envir = temp_env)
+  
+  # Identifica el nombre del dataframe en el entorno temporal
+  nombres_objetos <- ls(temp_env)
+  for (nombre in nombres_objetos) {
+    objeto <- get(nombre, envir = temp_env)
+    # Verifica si es un data frame y si el nombre comienza con BSG
+    if (is.data.frame(objeto) && grepl("^BSG", nombre)) {
+      # Añade el dataframe a nuestra lista
+      temp_dataframes[[length(temp_dataframes) + 1]] <- objeto
+    }
   }
 }
 
-# Ahora combina todos los data frames usando bind_rows
-datos_combinados <- bind_rows(dataframes_bsg)
-
-library(haven)
+# Combina todos los dataframes en uno solo
+datos_combinados_bsg <- bind_rows(temp_dataframes)
 
 # Procesar datos iniciales
-datos_combinados$CNTRY <- haven::zap_labels(datos_combinados$CNTRY)
+datos_combinados_bsg$CNTRY <- haven::zap_labels(datos_combinados_bsg$CNTRY)
 
 # Ver el resultado
-dim(datos_combinados)  # Dimensiones del data frame combinado
+dim(datos_combinados_bsg)  # Dimensiones del data frame combinado
 ```
 
-#### 
+#### \[Opcional - ¡Precaución!\] Eliminar otros objetos del entorno
+
+```{r}
+# Guardamos el nombre del objeto que queremos mantener
+objeto_a_mantener <- "datos_combinados_bsg"
+
+# Obtenemos todos los objetos en el entorno actual
+todos_los_objetos <- ls()
+
+# Creamos una lista de objetos a eliminar (todos excepto datos_combinados)
+objetos_a_eliminar <- todos_los_objetos[todos_los_objetos != objeto_a_mantener]
+
+# Eliminamos los objetos que no necesitamos
+rm(list = objetos_a_eliminar)
+
+# Verificamos que solo queda el dataframe combinado
+print(ls())
+```
+
+Deberíamos tener un data frame con 568 columnas y 135.615 filas.
+
+#### Selección de variables relevantes
+
+```{r}
+# Vector con todas las variables de interés
+variables_seleccionadas <- c(
+  # Variable dependiente (outcome), 
+  # son todos los valores plausibles de CIL
+  "PV1CIL", "PV2CIL", "PV3CIL", "PV4CIL", "PV5CIL",
+  
+  # Variables esenciales
+  "CNTRY", # El código del país (tres letras)
+  "IDSCHOOL", # id único de la escuela
+  "IDSTUD", # No sé si este es tan necesario, podemos sacarlo, id único de c/ estudiante 
+  "TOTWGTS", # Pesos totales, para mitigar sesgos del muestreo en descriptivas
+  "JKZONES", "JKREPS", # Para cálculos de varianza jackknife
+  
+  # Pesos replicados (SRWGT1-SRWGT75)
+  paste0("SRWGT", 1:75), # También para la varianza jacknife
+  
+  # Variables SES, demográficas y TIC
+  "NISB", # National index of socieconomic background
+  "S_HISEI", # Highest ISEI of parents
+  "S_HISCED", # Highest ISCED of parents
+  "S_HOMLIT", # Home literacy index
+  "S_SEX", # Sexo del/la estudiante
+  "SGENDER", # Género del/la estudiante
+  "S_AGE", # Edad del/la estudiante
+  
+  "S_IMMIG", # Immigration status,
+  "S_IMMBGR", # Immigration status, dicotómica
+  "S_TLANG", # Test language spoken at home
+  "S_ISCED", # Expected ISCED by student
+  "S_INTNET", # Internet access at home
+  "S_EXCOMP", # Computer experience in years
+  
+  "S_GENEFF", # ICT self-efficacy regarding the use of general applications
+  "S_ICTPOSS", # Students' perceptions of ICT - learning with and use of ICT
+  "S_ICTFUT", # Students' perceptions of ICT - expectations for future use of ICT
+  "S_SPECEFF", # ICT self-efficacy regarding the use of specialist applications
+  "S_ICTPOSG", # Students' perceptions of ICT - positive beliefs about ICT and society
+  "S_ICTNEG", # Students' perceptions of ICT - negative beliefs about ICT and society
+  "S_ICTSTUD", # ICT studies in current school year
+  "S_ACMULT" # Academic-media multitasking
+)
+
+# Seleccionar solo las columnas que existen en el dataframe
+datos_analisis <- datos_combinados_bsg %>%
+  select(any_of(variables_seleccionadas))
+
+# Mostrar información del resultado
+cat("Variables encontradas:", ncol(datos_analisis), "de", length(variables_seleccionadas), "\n")
+```

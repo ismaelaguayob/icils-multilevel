@@ -30,7 +30,7 @@ Al igual que con el peso total para la validez del muestreo en la representació
 library(pacman)
 p_load(dplyr, haven, lme4, summarytools, tidyverse, sjPlot, corrplot, reghelper)
 options(scipen = 999) 
-#rm(list = ls())      
+rm(list = ls())      
 ```
 
 ## Base de Estudiantes (BSG) - Nivel 1
@@ -181,6 +181,7 @@ datos_m1 <- datos_m1 %>%
      ) / 4
    )
 
+
 multivariate_model <- lm(PV1CIL ~ acceso_TIC_intnet + S_SEX + S_EXCOMP + S_ISCED , data = datos_m1)
 
 ```
@@ -243,8 +244,12 @@ corrplot(cor_matrix,
 results_0 = lmer(PV1CIL ~ 1 + (1 | IDSCHOOL), data = datos_m1)
 summary(results_0)
 
-reghelper::ICC(results_0)
+print(reghelper::ICC(results_0))
 ```
+
+### Cargamos las variables de escuela
+
+Nota: las variables del cuestionario de teachers usualmente se usan como nivel de escuela
 
 ```{r}
 # Obtener la lista de archivos que comienzan con "BCG" y terminan con ".Rdata"
@@ -297,7 +302,8 @@ variables_seleccionadas <- c(
   "IP3G10B", #Restrictions on allowed time to spend on computer
   "IP3G10C", #Student access to school computers outside class hours during school
   "IP3G10D", #Student access to school computers outside school hours
-  #Mirar variables de Availability II3G0 (4, 5, 6 y 7)
+  #Mirar variables de Availability II3G0 (4, 5, 6 y 7)"
+  "CRATSTD",
 )
 
 # Seleccionar solo las columnas que existen en el dataframe

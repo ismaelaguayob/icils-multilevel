@@ -4,7 +4,16 @@
 
 Al final hay un plan resumido que indica más o menos un paso a paso. Para llevar esto a cabo necesitamos buscar y seleccionar manually las variables de interés para cada base de datos, pero para no abrumarnos lo mejor sería ir seleccionando paso por paso, a medida que necesitemos.
 
-**Pregunta(?):** *¿La disponibilidad de recursos TIC en la escuela (Nivel 2) predice mayores niveles de CIL en los estudiantes (Nivel 1), controlando factores individuales y escolares? ¿Este efecto de los recursos escolares (Nivel 2) es más fuerte en países con menor infraestructura TIC nacional (Nivel 3), sugiriendo una compensación?*
+**Preguntas:**
+
+-   *¿La disponibilidad de recursos TIC en el hogar (Nivel 1) predice mayores niveles de CIL en los estudiantes?\
+    Spoiler: Sí (0.3).*
+
+-   *¿Este efecto de los recursos TIC en el hogar (Nivel 1) es más fuerte en escuelas con menor disponibilidad de recursos TIC (Nivel 2)?*
+
+-   *¿La disponibilidad de recursos TIC en la escuela (Nivel 2) predice mayores niveles de CIL en los estudiantes (Nivel 1), controlando factores individuales y escolares?*
+
+-   *¿Este efecto de los recursos escolares (Nivel 2) es más fuerte en países con menor infraestructura TIC (Nivel 3)?*
 
 Necesitamos variables de los tres niveles y de diferentes archivos de datos ICILS 2023, además de posiblemente datos externos (para el nivel de país sobre todo).
 

@@ -28,9 +28,9 @@ Al igual que con el peso total para la validez del muestreo en la representació
 
 ```{r}
 library(pacman)
-p_load(dplyr, haven)
+p_load(dplyr, haven, lme4, summarytools, tidyverse, sjPlot, corrplot, reghelper)
 options(scipen = 999) 
-rm(list = ls())      
+#rm(list = ls())      
 ```
 
 ## Base de Estudiantes (BSG) - Nivel 1
@@ -72,9 +72,6 @@ for (archivo in archivos_bsg) {
 
 # Combina todos los dataframes en uno solo
 datos_combinados_bsg <- bind_rows(temp_dataframes)
-
-# Procesar datos iniciales
-datos_combinados_bsg$CNTRY <- haven::zap_labels(datos_combinados_bsg$CNTRY)
 
 # Ver el resultado
 dim(datos_combinados_bsg)  # Dimensiones del data frame combinado
@@ -143,7 +140,13 @@ variables_seleccionadas <- c(
   "S_ICTPOSG", # Students' perceptions of ICT - positive beliefs about ICT and society
   "S_ICTNEG", # Students' perceptions of ICT - negative beliefs about ICT and society
   "S_ICTSTUD", # ICT studies in current school year
-  "S_ACMULT" # Academic-media multitasking
+  "S_ACMULT", # Academic-media multitasking,
+  
+  #Acceso a TIC en casa
+  "IS3G16BA", # Acceso de computador en casa para tareas (escritorio o laptop). Rango: 1 a 4 (nunca a siempre)
+  "IS3G16BB", # Acceso de tablets en casa para tareas. Rango: 1 a 4 (nunca a siempre)
+  "IS3G16BC", # Acceso de smartphones en casa (escritorio o laptop) Rango: 1 a 4 (nunca a siempre)
+  "S_INTNET" # Internet en casa si/no
 )
 
 # Seleccionar solo las columnas que existen en el dataframe
@@ -152,4 +155,170 @@ datos_analisis <- datos_combinados_bsg %>%
 
 # Mostrar información del resultado
 cat("Variables encontradas:", ncol(datos_analisis), "de", length(variables_seleccionadas), "\n")
+```
+
+```{r}
+#pregunta 1: efecto de acceso TIC en hogar en CIL
+datos_m1 <- datos_analisis %>%
+  select(IS3G16BA, IS3G16BB, IS3G16BC, S_INTNET, PV1CIL, S_SEX, S_AGE, IDSCHOOL, S_EXCOMP, S_ISCED, S_ICTSTUD)  %>%
+  na.omit() %>%
+  mutate_all(~(as.numeric(.))) # Convertimos todas las variables a numéricas
+
+# IS3G16X va de 0 a 3. Queremos que vaya de 0 a 1
+# Podemos multiplicar por 0.333333... (1/3)
+# Es decir, los valores posibles van a ser 0, 0.3~, 0,6~ y 1
+# Luego sumamos todos los valores de 0 a 1, y los dividimos por 4
+
+# Asignamos el resultado de la operación de vuelta a datos_indice
+# La línea 'datos_indice$acceso_TIC_intnet = NA' ya no es necesaria
+datos_m1 <- datos_m1 %>%
+  mutate(
+    acceso_TIC_intnet = (
+      ((IS3G16BA - 1) * (1/3)) +
+      ((IS3G16BB - 1) * (1/3)) + 
+      ((IS3G16BC - 1) * (1/3)) + 
+      (S_INTNET) # S_INTNET ya está en la escala deseada (0-1)
+     ) / 4
+   )
+
+multivariate_model <- lm(PV1CIL ~ acceso_TIC_intnet + S_SEX + S_EXCOMP + S_ISCED , data = datos_m1)
+
+```
+
+```{r}
+# Asumiendo que tu modelo se llama multivariate_model
+# (Aunque por la fórmula parece una regresión MÚLTIPLE, no multivariada)
+summary_model <- summary(multivariate_model)
+print(summary_model)
+
+# También puedes ver los coeficientes directamente (pero sin significancia)
+coef(multivariate_model)
+
+# Y los intervalos de confianza para los coeficientes
+confint(multivariate_model)
+```
+
+```{r}
+# --- PASO 1: Obtén los datos usados en el modelo ---
+# Opción A: Si los datos están guardados en el objeto del modelo (recomendado)
+# La imagen muestra que 'multivariate_model$model' podría contenerlos
+if (!is.null(multivariate_model$model)) {
+  data_for_corr <- multivariate_model$model
+} else {
+   stop("Data not found in model object ($model). Provide the original data frame.")
+}
+
+# --- PASO 2: Asegúrate de que todas las columnas sean numéricas ---
+# Verifica los tipos de datos
+print(sapply(data_for_corr, class))
+
+data_for_corr_numeric <- data_for_corr %>% select_if(is.numeric)
+
+# --- PASO 3: Calcula la matriz de correlaciones ---
+# 'use = "pairwise.complete.obs"' maneja NAs si aún quedaran algunos
+cor_matrix <- cor(data_for_corr_numeric, use = "pairwise.complete.obs")
+
+print("Matriz de Correlación:")
+print(round(cor_matrix, 2)) # Mostrar redondeada
+
+# --- PASO 4: Crea el gráfico de correlación ---
+# Gráfico básico
+corrplot(cor_matrix, method = "circle")
+
+# Gráfico más informativo (ejemplo)
+corrplot(cor_matrix,
+         method = "color",         # Método: color, number, circle, pie, shade
+         type = "upper",           # Mostrar solo triángulo superior
+         order = "hclust",         # Reordenar variables por clustering jerárquico
+         tl.col = "black",         # Color del texto de las etiquetas
+         tl.srt = 45,              # Rotación de las etiquetas
+         addCoef.col = "black",    # Color de los coeficientes añadidos
+         number.cex = 0.7,         # Tamaño de los coeficientes añadidos
+         diag = FALSE,             # Ocultar la diagonal
+         title = "Matriz de Correlación de Variables del Modelo",
+         mar = c(0,0,1,0))         # Ajustar márgenes para el título
+```
+
+```{r}
+results_0 = lmer(PV1CIL ~ 1 + (1 | IDSCHOOL), data = datos_m1)
+summary(results_0)
+
+reghelper::ICC(results_0)
+```
+
+```{r}
+# Obtener la lista de archivos que comienzan con "BCG" y terminan con ".Rdata"
+archivos_bcg <- list.files(
+  path = "./ICILS2023_IDB_R/Data", # Directorio actual (cambia si es necesario)
+  pattern = "^BCG.*\\.Rdata$",
+  full.names = TRUE
+)
+
+# Ver qué archivos encontramos
+print(archivos_bcg)
+
+# Inicializar una lista vacía para almacenar temporalmente los dataframes
+temp_dataframes <- list()
+
+# Cargar cada archivo y añadirlo a la lista
+for (archivo in archivos_bcg) {
+  # Crea un entorno temporal para cargar el archivo
+  temp_env <- new.env()
+  # Carga el archivo en el entorno temporal
+  load(archivo, envir = temp_env)
+  
+  # Identifica el nombre del dataframe en el entorno temporal
+  nombres_objetos <- ls(temp_env)
+  for (nombre in nombres_objetos) {
+    objeto <- get(nombre, envir = temp_env)
+    # Verifica si es un data frame y si el nombre comienza con BCG
+    if (is.data.frame(objeto) && grepl("^BCG", nombre)) {
+      # Añade el dataframe a nuestra lista
+      temp_dataframes[[length(temp_dataframes) + 1]] <- objeto
+    }
+  }
+}
+
+# Combina todos los dataframes en uno solo
+datos_combinados_bcg <- bind_rows(temp_dataframes)
+
+# Ver el resultado
+dim(datos_combinados_bcg)  # Dimensiones del data frame combinado
+```
+
+```{r}
+# Vector con todas las variables de interés
+variables_seleccionadas <- c(
+  "IDSCHOOL", 
+  "IP3G05", 
+  
+)
+
+# Seleccionar solo las columnas que existen en el dataframe
+datos_analisis <- datos_combinados_bcg %>%
+  select(any_of(variables_seleccionadas))
+
+# Mostrar información del resultado
+cat("Variables encontradas:", ncol(datos_analisis), "de", length(variables_seleccionadas), "\n")
+```
+
+```{r}
+library(sjPlot)
+
+multilevel_model <- lmer(PV1CIL ~ acceso_TIC_intnet + S_SEX + S_EXCOMP + S_ISCED  + (1 | IDSCHOOL), data = datos_m1)
+
+
+combined_table <- tab_model(
+  multivariate_model,
+  multilevel_model,
+#  show.ci = 0.95,       # Mostrar ICs
+ # show.p = TRUE,        # Mostrar valores p
+  #auto.label = TRUE,    # Intentar usar nombres de variables directamente
+  #show.r2 = TRUE,       # Mostrar R2 (aplica de forma diferente a cada modelo)
+  show.icc = TRUE,      # Mostrar ICC (solo relevante para multinivel)
+  show.re.var = TRUE,   # Mostrar varianzas aleatorias (solo relevante para multinivel)
+  title = "Tabla Comparativa: Modelo Multivariado y Modelo Multinivel" # Título opcional
+)
+
+combined_table
 ```

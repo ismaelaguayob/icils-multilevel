@@ -290,8 +290,14 @@ dim(datos_combinados_bcg)  # Dimensiones del data frame combinado
 # Vector con todas las variables de interés
 variables_seleccionadas <- c(
   "IDSCHOOL", 
-  "IP3G05", 
-  
+  "IP3G05", #Tamaño lugar escuela (rural o ciudad, población)
+  "IP3G10C", #Student access to school computers outside class hours during school
+  "IP3G06BA", #Percentage of students with socio-economic background/affluent homes
+  "IP3G06BB", #Percentage of students with socio-economic background/disadvantaged homes
+  "IP3G10B", #Restrictions on allowed time to spend on computer
+  "IP3G10C", #Student access to school computers outside class hours during school
+  "IP3G10D", #Student access to school computers outside school hours
+  #Mirar variables de Availability II3G0 (4, 5, 6 y 7)
 )
 
 # Seleccionar solo las columnas que existen en el dataframe
@@ -311,8 +317,8 @@ multilevel_model <- lmer(PV1CIL ~ acceso_TIC_intnet + S_SEX + S_EXCOMP + S_ISCED
 combined_table <- tab_model(
   multivariate_model,
   multilevel_model,
-#  show.ci = 0.95,       # Mostrar ICs
- # show.p = TRUE,        # Mostrar valores p
+  #show.ci = 0.95,       # Mostrar ICs
+  #show.p = TRUE,        # Mostrar valores p
   #auto.label = TRUE,    # Intentar usar nombres de variables directamente
   #show.r2 = TRUE,       # Mostrar R2 (aplica de forma diferente a cada modelo)
   show.icc = TRUE,      # Mostrar ICC (solo relevante para multinivel)
